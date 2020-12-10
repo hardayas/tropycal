@@ -34,7 +34,10 @@ def find_var(request,thresh):
     
     #Count of number of storms
     if request.find('count') >= 0 or request.find('num') >= 0:
-        return thresh, 'date' #not sure what date stands for
+        return thresh, 'type'
+
+    if request.find('date') >= 0 or request.find('day') >= 0:
+        return thresh, 'date'
     
     #Sustained wind, or change in wind speed
     if request.find('wind') >= 0 or request.find('vmax') >= 0:
@@ -50,9 +53,11 @@ def find_var(request,thresh):
         else:
             return thresh,'vmax'
 
-    elif request.find('ace')>=0 or request.find('accumulated')>=0:
+    elif request.find('ace')>=0:
         return thresh,'ace'
-        
+    elif request.find('acie')>=0:
+        return thresh,'acie'
+    
     #Minimum MSLP, or change in MSLP
     elif request.find('pressure') >= 0 or request.find('slp') >= 0:
         #If change in MSLP, determine time interval
@@ -106,11 +111,11 @@ def find_func(request,thresh):
     request = request.lower()
     
     #Numpy maximum function
-    if request.find('max') == 0:
+    if request.find('max') == 0 or request.find('latest') == 0:
         return thresh, lambda x: np.nanmax(x)
     
     #Numpy minimum function
-    if request.find('min') == 0:
+    if request.find('min') == 0 or request.find('earliest') == 0:
         return thresh, lambda x: np.nanmin(x)
     
     #Numpy average function
@@ -129,7 +134,9 @@ def find_func(request,thresh):
         return thresh, lambda x: len(x)
     
     #ACE - cumulative function
-    elif request.find('ace') >=0 or request.find('accumulated') >=0:
+    elif request.find('ace') >=0:
+        return thresh, lambda x: np.nansum(x)
+    elif request.find('acie') >=0:
         return thresh, lambda x: np.nansum(x)
     
     #Otherwise, function cannot be identified
@@ -255,6 +262,15 @@ def interp_storm(storm_dict,timeres=1,dt_window=24,dt_align='middle'):
     storm_dict['type'] = np.asarray(storm_dict['type'])
     storm_dict['lon'] = np.array(storm_dict['lon']) % 360
     
+    def round_datetime(tm,nearest_minute=10):
+        discard = timedelta(minutes=tm.minute % nearest_minute,
+                             seconds=tm.second,
+                             microseconds=tm.microsecond)
+        tm -= discard
+        if discard >= timedelta(minutes=int(nearest_minute/2)):
+            tm += timedelta(minutes=nearest_minute)
+        return tm
+    
     #Attempt temporal interpolation
     try:
         
@@ -262,7 +278,8 @@ def interp_storm(storm_dict,timeres=1,dt_window=24,dt_align='middle'):
         targettimes = np.arange(times[0],times[-1]+timeres/24,timeres/24)
         
         #Update dates
-        new_storm['date'] = [t.replace(tzinfo=None) for t in mdates.num2date(targettimes)]
+        new_storm['date'] = [round_datetime(t.replace(tzinfo=None)) for t in mdates.num2date(targettimes)]
+        targettimes = mdates.date2num(np.array(new_storm['date']))
         
         #Interpolate and fill in storm type
         stormtype = np.ones(len(storm_dict['type']))*-99
