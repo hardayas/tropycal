@@ -2695,7 +2695,7 @@ class TrackDataset:
         for year_range_temp in years_analysis:
 
             #Obtain all data points for the requested threshold and year/date ranges. Interpolate data to hourly.
-            print("--> Getting filtered storm tracks")
+            print("--> Getting filtered storm tracks yuha")
             points = self.filter_storms(year_range_temp,date_range,thresh=thresh,doInterp=True,return_keys=False)
 
             #Round lat/lon points down to nearest bin
