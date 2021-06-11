@@ -2569,7 +2569,7 @@ class TrackDataset:
 
     def gridded_stats(self,request,thresh={},year_range=None,year_range_subtract=None,year_average=False,
                       date_range=('1/1','12/31'),binsize=1,domain=None,ax=None,return_ax=False,\
-                      return_array=False,cartopy_proj=None,prop={},map_prop={}):
+                      return_array=False,cartopy_proj=None,prop={},map_prop={},genesis_flag=False):
         
         r"""
         Creates a plot of gridded statistics.
@@ -2695,8 +2695,15 @@ class TrackDataset:
         for year_range_temp in years_analysis:
 
             #Obtain all data points for the requested threshold and year/date ranges. Interpolate data to hourly.
-            print("--> Getting filtered storm tracks yuha")
+            print("--> Getting filtered storm tracks yuhaaa")
             points = self.filter_storms(year_range_temp,date_range,thresh=thresh,doInterp=True,return_keys=False)
+            
+            #if the stats are required only for genesis location, genesis here is defined to be first time
+            #a storm/tropical disturbance pops up in the dataset
+            if genesis_flag:
+                # group by storm id and only keep min date records
+                points = points.loc[points.groupby('stormid').date.idxmin()]
+            
 
             #Round lat/lon points down to nearest bin
             to_bin = lambda x: np.floor(x / binsize) * binsize
