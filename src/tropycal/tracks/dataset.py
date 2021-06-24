@@ -2837,45 +2837,45 @@ class TrackDataset:
                 years_listed = len(range(year_range[0],year_range[1]+1))
                 grid_z = grid_z / years_listed
         
-        #Create instance of plot object
-        try:
-            self.plot_obj
-        except:
-            self.plot_obj = TrackPlot()
+        # #Create instance of plot object
+        # try:
+        #     self.plot_obj
+        # except:
+        #     self.plot_obj = TrackPlot()
         
-        #Create cartopy projection using basin
-        if domain == None:
-            domain = self.basin
-        if cartopy_proj == None:
-            if max(points['lon']) > 150 or min(points['lon']) < -150:
-                self.plot_obj.create_cartopy(proj='PlateCarree',central_longitude=180.0)
-            else:
-                self.plot_obj.create_cartopy(proj='PlateCarree',central_longitude=0.0)
+        # #Create cartopy projection using basin
+        # if domain == None:
+        #     domain = self.basin
+        # if cartopy_proj == None:
+        #     if max(points['lon']) > 150 or min(points['lon']) < -150:
+        #         self.plot_obj.create_cartopy(proj='PlateCarree',central_longitude=180.0)
+        #     else:
+        #         self.plot_obj.create_cartopy(proj='PlateCarree',central_longitude=0.0)
         
-        #Format left title for plot
-        endash = u"\u2013"
-        dot = u"\u2022"
-        title_L = request.lower()
-        for name in ['wind','vmax']:
-            title_L = title_L.replace(name,'wind (kt)')
-        for name in ['pressure','mslp']:
-            title_L = title_L.replace(name,'pressure (hPa)')
-        for name in ['heading','motion']:
-            title_L = title_L.replace(name,f'heading (kt) over {thresh["dt_window"]} hours')
-        for name in ['speed','movement']:
-            title_L = title_L.replace(name,f'forward speed (kt) over {thresh["dt_window"]} hours')
-        if request.find('change') >= 0:
-            title_L = title_L+f", {thresh['dt_align']}"
-        title_L = title_L[0].upper() + title_L[1:] + plot_subtitle
+        # #Format left title for plot
+        # endash = u"\u2013"
+        # dot = u"\u2022"
+        # title_L = request.lower()
+        # for name in ['wind','vmax']:
+        #     title_L = title_L.replace(name,'wind (kt)')
+        # for name in ['pressure','mslp']:
+        #     title_L = title_L.replace(name,'pressure (hPa)')
+        # for name in ['heading','motion']:
+        #     title_L = title_L.replace(name,f'heading (kt) over {thresh["dt_window"]} hours')
+        # for name in ['speed','movement']:
+        #     title_L = title_L.replace(name,f'forward speed (kt) over {thresh["dt_window"]} hours')
+        # if request.find('change') >= 0:
+        #     title_L = title_L+f", {thresh['dt_align']}"
+        # title_L = title_L[0].upper() + title_L[1:] + plot_subtitle
         
-        #Format right title for plot
-        date_range = [dt.strptime(d,'%m/%d').strftime('%b/%d') for d in date_range]
-        add_avg = ' year-avg' if year_average == True else ''
-        if year_range_subtract == None:
-            title_R = f'{date_range[0].replace("/"," ")} {endash} {date_range[1].replace("/"," ")} {dot} {year_range[0]} {endash} {year_range[1]}{add_avg}'
-        else:
-            title_R = f'{date_range[0].replace("/"," ")} {endash} {date_range[1].replace("/"," ")}\n{year_range[0]}{endash}{year_range[1]}{add_avg} minus {year_range_subtract[0]}{endash}{year_range_subtract[1]}{add_avg}'
-        prop['title_L'],prop['title_R'] = title_L,title_R
+        # #Format right title for plot
+        # date_range = [dt.strptime(d,'%m/%d').strftime('%b/%d') for d in date_range]
+        # add_avg = ' year-avg' if year_average == True else ''
+        # if year_range_subtract == None:
+        #     title_R = f'{date_range[0].replace("/"," ")} {endash} {date_range[1].replace("/"," ")} {dot} {year_range[0]} {endash} {year_range[1]}{add_avg}'
+        # else:
+        #     title_R = f'{date_range[0].replace("/"," ")} {endash} {date_range[1].replace("/"," ")}\n{year_range[0]}{endash}{year_range[1]}{add_avg} minus {year_range_subtract[0]}{endash}{year_range_subtract[1]}{add_avg}'
+        # prop['title_L'],prop['title_R'] = title_L,title_R
         
         #Change the masking for variables that go out to zero near the edge of the data
         if prop['smooth'] is not None:
@@ -2910,8 +2910,8 @@ class TrackDataset:
             grid_z_zeros[initial_mask==-9999] = np.nan
             grid_z = grid_z_zeros.copy()
         
-        #Plot gridded field
-        plot_ax = self.plot_obj.plot_gridded(grid_x,grid_y,grid_z,varname,VEC_FLAG,domain,ax=ax,return_ax=True,prop=prop,map_prop=map_prop)
+        # #Plot gridded field
+        # plot_ax = self.plot_obj.plot_gridded(grid_x,grid_y,grid_z,varname,VEC_FLAG,domain,ax=ax,return_ax=True,prop=prop,map_prop=map_prop)
         
         #Format grid into xarray if specified
         if return_array == True:
@@ -2923,12 +2923,12 @@ class TrackDataset:
             except ImportError as e:
                 raise RuntimeError("Error: xarray is not available. Install xarray in order to use the 'return_array' flag.") from e
 
-        #Return axis
-        if return_ax == True and return_array == True:
-            return {'ax':plot_ax,'array':arr}
-        if return_ax == False and return_array == True:
-            return arr
-        if ax != None or return_ax == True: return plot_ax
+        # #Return axis
+        # if return_ax == True and return_array == True:
+        #     return {'ax':plot_ax,'array':arr}
+        # if return_ax == False and return_array == True:
+        #     return arr
+        # if ax != None or return_ax == True: return plot_ax
         
 
     
