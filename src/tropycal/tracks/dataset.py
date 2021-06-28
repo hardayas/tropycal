@@ -2470,7 +2470,7 @@ class TrackDataset:
         
         #Determine year and date range
         year_min,year_max = year_range
-        date_min,date_max = [dt.strptime(i,'%m/%d') for i in date_range]
+        date_min,date_max = [dt.strptime(i,'%m/%d/%Y') for i in date_range]
         date_max += timedelta(days=1,seconds=-1)
         
         #Determine if a date falls within the date range
@@ -2693,242 +2693,220 @@ class TrackDataset:
         grid_y_years = []
         grid_z_years = []
         
-        for year_range_temp in years_analysis:
+        hist = np.ones((1,180,360))
 
-            #Obtain all data points for the requested threshold and year/date ranges. Interpolate data to hourly.
-            print("--> Getting filtered storm tracks yuhaaa")
-            points = self.filter_storms(year_range_temp,date_range,thresh=thresh,doInterp=True,return_keys=False)
-            
-            #if the stats are required only for genesis location, genesis here is defined to be first time
-            #a storm/tropical disturbance pops up in the dataset
-            if genesis_flag:
-                # group by storm id and only keep min date records
-                points = points.loc[points.groupby('stormid').date.idxmin()]
-            
+        period = pd.date_range(start='1/1/1980',end='12/1/2020', freq='M')
+        #check dates
+        for ea_period in period:
 
-            #Round lat/lon points down to nearest bin
-            to_bin = lambda x: np.floor(x / binsize) * binsize
-            points["latbin"] = points.lat.map(to_bin)
-            points["lonbin"] = points.lon.map(to_bin)
+            for year_range_temp in [(ea_period.year,ea_period.year)]:
+                
+                date_start = ea_period - pd.offsets.MonthBegin(1, normalize=True)
+                date_range = (date_start.strftime('%m/%d/%Y'), ea_period.strftime('%m/%d/%Y'))
+                #__import__('IPython').embed()
+                #Obtain all data points for the requested threshold and year/date ranges. Interpolate data to hourly.
+                print("--> Getting filtered storm tracks YUHAA")
+                points = self.filter_storms(year_range_temp,date_range,thresh=thresh,doInterp=True,return_keys=False)
+                
+                #if the stats are required only for genesis location, genesis here is defined to be first time
+                #a storm/tropical disturbance pops up in the dataset
+                if genesis_flag:
+                    # group by storm id and only keep min date records
+                    points = points.loc[points.groupby('stormid').date.idxmin()]
+                
 
-            #---------------------------------------------------------------------------------------------------
+                #Round lat/lon points down to nearest bin
+                to_bin = lambda x: np.floor(x / binsize) * binsize
+                points["latbin"] = points.lat.map(to_bin)
+                points["lonbin"] = points.lon.map(to_bin)
 
-            #Group by latbin,lonbin,stormid
-            print("--> Grouping by lat/lon/storm")
-            groups = points.groupby(["latbin","lonbin","stormid","season"])
+                #---------------------------------------------------------------------------------------------------
 
-            #Loops through groups, and apply stat func to storms
-            #Constructs a new dataframe containing the lat/lon bins, storm ID and the plotting variable
-            new_df = {'latbin':[],'lonbin':[],'stormid':[],'season':[],varname:[]}
-            for g in groups:
-                #Apply function to all time steps in which a storm tracks within a gridbox
+                #Group by latbin,lonbin,stormid
+                print("--> Grouping by lat/lon/storm")
+                groups = points.groupby(["latbin","lonbin","stormid","season"])
+
+                #Loops through groups, and apply stat func to storms
+                #Constructs a new dataframe containing the lat/lon bins, storm ID and the plotting variable
+                new_df = {'latbin':[],'lonbin':[],'stormid':[],'season':[],varname:[]}
+                for g in groups:
+                    #Apply function to all time steps in which a storm tracks within a gridbox
+                    if VEC_FLAG:
+                        new_df[varname].append([func(g[1][v].values) for v in varname]) # func is for which func to apply: avg,max,..
+                    elif varname == 'date':
+                        new_df[varname].append(func([date_diff(dt(2000,t.month,t.day),startdate)\
+                            for t in pd.DatetimeIndex(g[1][varname].values)]))
+                    else:
+                        new_df[varname].append(func(g[1][varname].values))                    
+                    new_df['latbin'].append(g[0][0])
+                    new_df['lonbin'].append(g[0][1])
+                    new_df['stormid'].append(g[0][2])
+                    new_df['season'].append(g[0][3])
+                new_df = pd.DataFrame.from_dict(new_df)
+
+                #---------------------------------------------------------------------------------------------------
+
+                #Group again by latbin,lonbin
+                #Construct two 1D lists: zi (grid values) and coords, that correspond to the 2D grid
+                groups = new_df.groupby(["latbin", "lonbin"])
+
+                #Apply the function to all storms that pass through a gridpoint
                 if VEC_FLAG:
-                    new_df[varname].append([func(g[1][v].values) for v in varname])
+                    zi = [[func(v) for v in zip(*g[1][varname])] if len(g[1]) >= thresh['sample_min'] else [np.nan]*2 for g in groups]
                 elif varname == 'date':
-                    new_df[varname].append(func([date_diff(dt(2000,t.month,t.day),startdate)\
-                          for t in pd.DatetimeIndex(g[1][varname].values)]))
+                    zi = [func(g[1][varname]) if len(g[1]) >= thresh['sample_min'] else np.nan for g in groups]
+                    zi = [mdates.date2num(startdate+z) for z in zi]                
                 else:
-                    new_df[varname].append(func(g[1][varname].values))                    
-                new_df['latbin'].append(g[0][0])
-                new_df['lonbin'].append(g[0][1])
-                new_df['stormid'].append(g[0][2])
-                new_df['season'].append(g[0][3])
-            new_df = pd.DataFrame.from_dict(new_df)
+                    zi = [func(g[1][varname]) if len(g[1]) >= thresh['sample_min'] else np.nan for g in groups]
 
+                #Construct a 1D array of coordinates
+                coords = [g[0] for g in groups]
+                
+                #Construct a 2D longitude and latitude grid, using the specified binsize resolution
+                if prop['smooth'] is not None:
+                    all_lats = [(round(l/binsize)*binsize) for key in self.data.keys() for l in self.data[key]['lat']]
+                    all_lons = [(round(l/binsize)*binsize)%360 for key in self.data.keys() for l in self.data[key]['lon']]
+                    xi = np.arange(min(all_lons)-binsize,max(all_lons)+2*binsize,binsize)
+                    yi = np.arange(min(all_lats)-binsize,max(all_lats)+2*binsize,binsize)
+                    if self.basin == 'all':
+                        xi = np.arange(0,360+binsize,binsize)
+                        yi = np.arange(-90,90+binsize,binsize)
+                else:
+                    #xi = np.arange(np.nanmin(points["lonbin"])-binsize,np.nanmax(points["lonbin"])+2*binsize,binsize)
+                    #yi = np.arange(np.nanmin(points["latbin"])-binsize,np.nanmax(points["latbin"])+2*binsize,binsize)
+                    xi = np.arange(0,360,binsize) #--added (essentially all_lats to modify lib. to global gridded dataset)
+                    yi = np.arange(-90,90,binsize) #--added (essentially all_longs to modify lib. to global gridded dataset)
+                grid_x, grid_y = np.meshgrid(xi,yi)
+                grid_x_years.append(grid_x)
+                grid_y_years.append(grid_y)
+
+                #Construct a 2D grid for the z value, depending on whether vector or scalar quantity
+                if VEC_FLAG:
+                    grid_z_u = np.ones(grid_x.shape) * np.nan
+                    grid_z_v = np.ones(grid_x.shape) * np.nan
+                    for c,z in zip(coords,zi):
+                        grid_z_u[np.where((grid_y==c[0]) & (grid_x==c[1]))] = z[0]
+                        grid_z_v[np.where((grid_y==c[0]) & (grid_x==c[1]))] = z[1]
+                    grid_z = [grid_z_u,grid_z_v]
+                else:
+                    grid_z = np.ones(grid_x.shape)*np.nan
+                    for c,z in zip(coords,zi):
+                        grid_z[np.where((grid_y==c[0]) & (grid_x==c[1]))] = z
+
+                #Set zero values to nan's if necessary
+                if varname == 'type':
+                    grid_z[np.where(grid_z==0)] = np.nan
+                
+                #Add to list of grid_z's
+                grid_z_years.append(grid_z)
+            
+            #---------------------------------------------------------------------------------------------------
+            
+            # #Create instance of plot object
+            # try:
+            #     self.plot_obj
+            # except:
+            #     self.plot_obj = TrackPlot()
+            
+            # #Create cartopy projection using basin
+            # if domain == None:
+            #     domain = self.basin
+            # if cartopy_proj == None:
+            #     if max(points['lon']) > 150 or min(points['lon']) < -150:
+            #         self.plot_obj.create_cartopy(proj='PlateCarree',central_longitude=180.0)
+            #     else:
+            #         self.plot_obj.create_cartopy(proj='PlateCarree',central_longitude=0.0)
+            
+            # #Format left title for plot
+            # endash = u"\u2013"
+            # dot = u"\u2022"
+            # title_L = request.lower()
+            # for name in ['wind','vmax']:
+            #     title_L = title_L.replace(name,'wind (kt)')
+            # for name in ['pressure','mslp']:
+            #     title_L = title_L.replace(name,'pressure (hPa)')
+            # for name in ['heading','motion']:
+            #     title_L = title_L.replace(name,f'heading (kt) over {thresh["dt_window"]} hours')
+            # for name in ['speed','movement']:
+            #     title_L = title_L.replace(name,f'forward speed (kt) over {thresh["dt_window"]} hours')
+            # if request.find('change') >= 0:
+            #     title_L = title_L+f", {thresh['dt_align']}"
+            # title_L = title_L[0].upper() + title_L[1:] + plot_subtitle
+            
+            # #Format right title for plot
+            # date_range = [dt.strptime(d,'%m/%d').strftime('%b/%d') for d in date_range]
+            # add_avg = ' year-avg' if year_average == True else ''
+            # if year_range_subtract == None:
+            #     title_R = f'{date_range[0].replace("/"," ")} {endash} {date_range[1].replace("/"," ")} {dot} {year_range[0]} {endash} {year_range[1]}{add_avg}'
+            # else:
+            #     title_R = f'{date_range[0].replace("/"," ")} {endash} {date_range[1].replace("/"," ")}\n{year_range[0]}{endash}{year_range[1]}{add_avg} minus {year_range_subtract[0]}{endash}{year_range_subtract[1]}{add_avg}'
+            # prop['title_L'],prop['title_R'] = title_L,title_R
+            
             #---------------------------------------------------------------------------------------------------
 
-            #Group again by latbin,lonbin
-            #Construct two 1D lists: zi (grid values) and coords, that correspond to the 2D grid
-            groups = new_df.groupby(["latbin", "lonbin"])
-
-            #Apply the function to all storms that pass through a gridpoint
-            if VEC_FLAG:
-                zi = [[func(v) for v in zip(*g[1][varname])] if len(g[1]) >= thresh['sample_min'] else [np.nan]*2 for g in groups]
-            elif varname == 'date':
-                zi = [func(g[1][varname]) if len(g[1]) >= thresh['sample_min'] else np.nan for g in groups]
-                zi = [mdates.date2num(startdate+z) for z in zi]                
-            else:
-                zi = [func(g[1][varname]) if len(g[1]) >= thresh['sample_min'] else np.nan for g in groups]
-
-            #Construct a 1D array of coordinates
-            coords = [g[0] for g in groups]
-
-            #Construct a 2D longitude and latitude grid, using the specified binsize resolution
+            #Change the masking for variables that go out to zero near the edge of the data
             if prop['smooth'] is not None:
-                all_lats = [(round(l/binsize)*binsize) for key in self.data.keys() for l in self.data[key]['lat']]
-                all_lons = [(round(l/binsize)*binsize)%360 for key in self.data.keys() for l in self.data[key]['lon']]
-                xi = np.arange(min(all_lons)-binsize,max(all_lons)+2*binsize,binsize)
-                yi = np.arange(min(all_lats)-binsize,max(all_lats)+2*binsize,binsize)
-                if self.basin == 'all':
-                    xi = np.arange(0,360+binsize,binsize)
-                    yi = np.arange(-90,90+binsize,binsize)
-            else:
-                xi = np.arange(np.nanmin(points["lonbin"])-binsize,np.nanmax(points["lonbin"])+2*binsize,binsize)
-                yi = np.arange(np.nanmin(points["latbin"])-binsize,np.nanmax(points["latbin"])+2*binsize,binsize)
-            grid_x, grid_y = np.meshgrid(xi,yi)
-            grid_x_years.append(grid_x)
-            grid_y_years.append(grid_y)
+                
+                #Replace NaNs with zeros to apply Gaussian filter
+                grid_z_zeros = grid_z.copy()
+                grid_z_zeros[np.isnan(grid_z)] = 0
+                initial_mask = grid_z.copy() #Save initial mask
+                initial_mask[np.isnan(grid_z)] = -9999
+                grid_z_zeros = gfilt(grid_z_zeros,sigma=prop['smooth'])
+                
+                
+                if len(grid_z_years) == 2:
+                    #grid_z_1_zeros = np.asarray(grid_z_1)
+                    #grid_z_1_zeros[grid_z_1==-9999]=0
+                    #grid_z_1_zeros = gfilt(grid_z_1_zeros,sigma=prop['smooth'])
+                    
+                    #grid_z_2_zeros = np.asarray(grid_z_2)
+                    #grid_z_2_zeros[grid_z_2==-8999]=0
+                    #grid_z_2_zeros = gfilt(grid_z_2_zeros,sigma=prop['smooth'])
+                    #grid_z_zeros = grid_z_1_zeros - grid_z_2_zeros
+                    #test_zeros = (grid_z_1_zeros<.02*np.nanmax(grid_z_1_zeros)) & (grid_z_2_zeros<.02*np.nanmax(grid_z_2_zeros))
+                    pass
+                
+                elif varname not in [('dx_dt','dy_dt'),'speed','mslp']:
+                    
+                    #Apply cutoff at 2% of maximum
+                    test_zeros = (grid_z_zeros<.02*np.amax(grid_z_zeros))
+                    grid_z_zeros[test_zeros] = -9999
+                    initial_mask = grid_z_zeros.copy()
+                    
+                grid_z_zeros[initial_mask==-9999] = np.nan
+                grid_z = grid_z_zeros.copy()
+            
+            #Plot gridded field
+            #plot_ax = self.plot_obj.plot_gridded(grid_x,grid_y,grid_z,varname,VEC_FLAG,domain,ax=ax,return_ax=True,prop=prop,map_prop=map_prop)
+            
+            # #Format grid into xarray if specified
+            # if return_array == True:
+            #     try:
+            #         #Import xarray and construct DataArray, replacing NaNs with zeros
+            #         import xarray as xr
+            #         arr = xr.DataArray(np.nan_to_num(grid_z),coords=[grid_y.T[0],grid_x[0]],dims=['lat','lon']) # add some kinda time here
+            #         __import__('IPython').embed()
+            #         return arr
+            #     except ImportError as e:
+            #         raise RuntimeError("Error: xarray is not available. Install xarray in order to use the 'return_array' flag.") from e
+            
+            hist = np.append(hist, [np.nan_to_num(grid_z)], axis=0)
 
-            #Construct a 2D grid for the z value, depending on whether vector or scalar quantity
-            if VEC_FLAG:
-                grid_z_u = np.ones(grid_x.shape) * np.nan
-                grid_z_v = np.ones(grid_x.shape) * np.nan
-                for c,z in zip(coords,zi):
-                    grid_z_u[np.where((grid_y==c[0]) & (grid_x==c[1]))] = z[0]
-                    grid_z_v[np.where((grid_y==c[0]) & (grid_x==c[1]))] = z[1]
-                grid_z = [grid_z_u,grid_z_v]
-            else:
-                grid_z = np.ones(grid_x.shape)*np.nan
-                for c,z in zip(coords,zi):
-                    grid_z[np.where((grid_y==c[0]) & (grid_x==c[1]))] = z
+        #Return axis
+        if return_ax == True and return_array == True:
+            return {'ax':plot_ax,'array':arr}
+        if return_ax == False and return_array == True:
+            import xarray as xr
+            hist = hist[1:,:,:] # this is because of the initialisation with ones at the start
+            #__import__('IPython').embed()
 
-            #Set zero values to nan's if necessary
-            if varname == 'type':
-                grid_z[np.where(grid_z==0)] = np.nan
-            
-            #Add to list of grid_z's
-            grid_z_years.append(grid_z)
-        
-        #---------------------------------------------------------------------------------------------------
-        
-        #Calculate difference between plots, if specified
-        if len(grid_z_years) == 2:
-            try:
-                #Import xarray and construct DataArray
-                import xarray as xr
-                
-                #Determine whether to use averages
-                if year_average == True:
-                    years_listed = len(range(year_range[0],year_range[1]+1))
-                    grid_z_years[0] = grid_z_years[0] / years_listed
-                    years_listed = len(range(year_range_subtract[0],year_range_subtract[1]+1))
-                    grid_z_years[1] = grid_z_years[1] / years_listed
-                   
-                #Construct DataArrays
-                grid_z_1 = xr.DataArray(np.nan_to_num(grid_z_years[0]),coords=[grid_y_years[0].T[0],grid_x_years[0][0]],dims=['lat','lon'])
-                grid_z_2 = xr.DataArray(np.nan_to_num(grid_z_years[1]),coords=[grid_y_years[1].T[0],grid_x_years[1][0]],dims=['lat','lon'])
-                
-                #Compute difference grid
-                grid_z = grid_z_1 - grid_z_2
-                print(np.nanmin(grid_z))
-                
-                #Reconstruct lat & lon grids
-                xi = grid_z.lon.values
-                yi = grid_z.lat.values
-                grid_z = grid_z.values
-                grid_x, grid_y = np.meshgrid(xi,yi)
-                
-                #Determine NaNs
-                grid_z_years[0][np.isnan(grid_z_years[0])] = -9999
-                grid_z_years[1][np.isnan(grid_z_years[1])] = -8999
-                grid_z_years[0][grid_z_years[0]!=-9999] = 0
-                grid_z_years[1][grid_z_years[1]!=-8999] = 0
-                grid_z_1 = xr.DataArray(np.nan_to_num(grid_z_years[0]),coords=[grid_y_years[0].T[0],grid_x_years[0][0]],dims=['lat','lon'])
-                grid_z_2 = xr.DataArray(np.nan_to_num(grid_z_years[1]),coords=[grid_y_years[1].T[0],grid_x_years[1][0]],dims=['lat','lon'])
-                grid_z_check = (grid_z_1 - grid_z_2).values
-                grid_z[grid_z_check==-1000] = np.nan
-                print(np.nanmin(grid_z))
-                
-            except ImportError as e:
-                raise RuntimeError("Error: xarray is not available. Install xarray in order to use the subtract year functionality.") from e
-        else:
-            #Determine whether to use averages
-            if year_average == True:
-                years_listed = len(range(year_range[0],year_range[1]+1))
-                grid_z = grid_z / years_listed
-        
-        # #Create instance of plot object
-        # try:
-        #     self.plot_obj
-        # except:
-        #     self.plot_obj = TrackPlot()
-        
-        # #Create cartopy projection using basin
-        # if domain == None:
-        #     domain = self.basin
-        # if cartopy_proj == None:
-        #     if max(points['lon']) > 150 or min(points['lon']) < -150:
-        #         self.plot_obj.create_cartopy(proj='PlateCarree',central_longitude=180.0)
-        #     else:
-        #         self.plot_obj.create_cartopy(proj='PlateCarree',central_longitude=0.0)
-        
-        # #Format left title for plot
-        # endash = u"\u2013"
-        # dot = u"\u2022"
-        # title_L = request.lower()
-        # for name in ['wind','vmax']:
-        #     title_L = title_L.replace(name,'wind (kt)')
-        # for name in ['pressure','mslp']:
-        #     title_L = title_L.replace(name,'pressure (hPa)')
-        # for name in ['heading','motion']:
-        #     title_L = title_L.replace(name,f'heading (kt) over {thresh["dt_window"]} hours')
-        # for name in ['speed','movement']:
-        #     title_L = title_L.replace(name,f'forward speed (kt) over {thresh["dt_window"]} hours')
-        # if request.find('change') >= 0:
-        #     title_L = title_L+f", {thresh['dt_align']}"
-        # title_L = title_L[0].upper() + title_L[1:] + plot_subtitle
-        
-        # #Format right title for plot
-        # date_range = [dt.strptime(d,'%m/%d').strftime('%b/%d') for d in date_range]
-        # add_avg = ' year-avg' if year_average == True else ''
-        # if year_range_subtract == None:
-        #     title_R = f'{date_range[0].replace("/"," ")} {endash} {date_range[1].replace("/"," ")} {dot} {year_range[0]} {endash} {year_range[1]}{add_avg}'
-        # else:
-        #     title_R = f'{date_range[0].replace("/"," ")} {endash} {date_range[1].replace("/"," ")}\n{year_range[0]}{endash}{year_range[1]}{add_avg} minus {year_range_subtract[0]}{endash}{year_range_subtract[1]}{add_avg}'
-        # prop['title_L'],prop['title_R'] = title_L,title_R
-        
-        #Change the masking for variables that go out to zero near the edge of the data
-        if prop['smooth'] is not None:
-            
-            #Replace NaNs with zeros to apply Gaussian filter
-            grid_z_zeros = grid_z.copy()
-            grid_z_zeros[np.isnan(grid_z)] = 0
-            initial_mask = grid_z.copy() #Save initial mask
-            initial_mask[np.isnan(grid_z)] = -9999
-            grid_z_zeros = gfilt(grid_z_zeros,sigma=prop['smooth'])
-            
-            
-            if len(grid_z_years) == 2:
-                #grid_z_1_zeros = np.asarray(grid_z_1)
-                #grid_z_1_zeros[grid_z_1==-9999]=0
-                #grid_z_1_zeros = gfilt(grid_z_1_zeros,sigma=prop['smooth'])
-                
-                #grid_z_2_zeros = np.asarray(grid_z_2)
-                #grid_z_2_zeros[grid_z_2==-8999]=0
-                #grid_z_2_zeros = gfilt(grid_z_2_zeros,sigma=prop['smooth'])
-                #grid_z_zeros = grid_z_1_zeros - grid_z_2_zeros
-                #test_zeros = (grid_z_1_zeros<.02*np.nanmax(grid_z_1_zeros)) & (grid_z_2_zeros<.02*np.nanmax(grid_z_2_zeros))
-                pass
-            
-            elif varname not in [('dx_dt','dy_dt'),'speed','mslp']:
-                
-                #Apply cutoff at 2% of maximum
-                test_zeros = (grid_z_zeros<.02*np.amax(grid_z_zeros))
-                grid_z_zeros[test_zeros] = -9999
-                initial_mask = grid_z_zeros.copy()
-                
-            grid_z_zeros[initial_mask==-9999] = np.nan
-            grid_z = grid_z_zeros.copy()
-        
-        # #Plot gridded field
-        # plot_ax = self.plot_obj.plot_gridded(grid_x,grid_y,grid_z,varname,VEC_FLAG,domain,ax=ax,return_ax=True,prop=prop,map_prop=map_prop)
-        
-        #Format grid into xarray if specified
-        if return_array == True:
-            try:
-                #Import xarray and construct DataArray, replacing NaNs with zeros
-                import xarray as xr
-                arr = xr.DataArray(np.nan_to_num(grid_z),coords=[grid_y.T[0],grid_x[0]],dims=['lat','lon'])
-                return arr
-            except ImportError as e:
-                raise RuntimeError("Error: xarray is not available. Install xarray in order to use the 'return_array' flag.") from e
+            lons=xr.DataArray(grid_x[0],name='lon')
+            lats=xr.DataArray(grid_y.T[0],name='lat')
 
-        # #Return axis
-        # if return_ax == True and return_array == True:
-        #     return {'ax':plot_ax,'array':arr}
-        # if return_ax == False and return_array == True:
-        #     return arr
-        # if ax != None or return_ax == True: return plot_ax
+            arr = xr.DataArray(hist, coords=[period,lats,lons], dims=['month','lat','lon'])
+            return arr
+        if ax != None or return_ax == True: return plot_ax
         
 
     
