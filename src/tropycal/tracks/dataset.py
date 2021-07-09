@@ -2567,7 +2567,9 @@ class TrackDataset:
         else:
             return p
 
-    def gridded_stats_plot(grid_x,grid_y,grid_z,varname,VEC_FLAG,domain,points,cartopy_proj,ax,map_prop):
+    def gridded_stats_plot(self,grid_x,grid_y,grid_z,varname,VEC_FLAG,domain,points,\
+                           cartopy_proj,ax,map_prop,prop,request,thresh,plot_subtitle,
+                           date_range,year_average,year_range_subtract,year_range):
 
         #Create instance of plot object
         try:
@@ -2610,12 +2612,13 @@ class TrackDataset:
         prop['title_L'],prop['title_R'] = title_L,title_R
 
         #Plot gridded field
-        return self.plot_obj.plot_gridded(grid_x,grid_y,grid_z,varname,VEC_FLAG,domain,ax=ax,\
+        plot_ax = self.plot_obj.plot_gridded(grid_x,grid_y,grid_z,varname,VEC_FLAG,domain,ax=ax,\
                                             return_ax=True,prop=prop,map_prop=map_prop)
+        return plot_ax
         
 
     def gridded_stats(self,request,thresh={},year_range=None,year_range_subtract=None,year_average=False,
-                      date_range=('1/1','12/31'),binsize=1,domain=None,ax=None,return_ax=False,\
+                      date_range=('1/1','12/31'),binsize=1,domain=None,ax=None,plot_return_ax=False,\
                       return_array=False,cartopy_proj=None,prop={},map_prop={}):
         
         r"""
@@ -2675,8 +2678,8 @@ class TrackDataset:
             Domain for the plot. Default is "dynamic". Please refer to :ref:`options-domain` for available domain options.
         ax : axes, optional
             Instance of axes to plot on. If none, one will be generated. Default is none.
-        return_ax : bool, optional
-            If True, returns the axes instance on which the plot was generated for the user to further modify. Default is False.
+        plot_return_ax : bool, optional
+            If True, plots and returns the axes instance on which the plot was generated for the user to further modify. Default is False.
         return_array : bool, optional
             If True, returns the gridded 2D array used to generate the plot. Default is False.
         cartopy_proj : ccrs, optional
@@ -2950,9 +2953,11 @@ class TrackDataset:
             grid_z = grid_z_zeros.copy()
         
         #Plot gridded field if needed
-        if return_ax == True:
-            plot_ax = self.gridded_stats_plot(grid_x,grid_y,grid_z,varname,VEC_FLAG,domain,points,cartopy_proj,ax,\
-                                                map_prop)
+        if plot_return_ax == True:
+            plot_ax = self.gridded_stats_plot(grid_x,grid_y,grid_z,varname,VEC_FLAG, \
+                                              domain,points,cartopy_proj,ax,map_prop,prop, \
+                                              request,thresh,plot_subtitle,date_range, \
+                                              year_average,year_range_subtract,year_range)
         
         #Format grid into xarray if specified
         if return_array == True:
@@ -2960,16 +2965,16 @@ class TrackDataset:
                 #Import xarray and construct DataArray, replacing NaNs with zeros
                 import xarray as xr
                 arr = xr.DataArray(np.nan_to_num(grid_z),coords=[grid_y.T[0],grid_x[0]],dims=['lat','lon'])
-                return arr
+                #return arr
             except ImportError as e:
                 raise RuntimeError("Error: xarray is not available. Install xarray in order to use the 'return_array' flag.") from e
 
         #Return axis
-        if return_ax == True and return_array == True:
+        if plot_return_ax == True and return_array == True:
             return {'ax':plot_ax,'array':arr}
-        if return_ax == False and return_array == True:
+        if plot_return_ax == False and return_array == True:
             return arr
-        if ax != None or return_ax == True: return plot_ax
+        if ax != None or plot_return_ax == True: return plot_ax
     
     def assign_storm_tornadoes(self,dist_thresh=1000,tornado_path='spc'):
         

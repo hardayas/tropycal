@@ -1956,11 +1956,10 @@ None,prop={},map_prop={}):
         text = self.plot_credit()
         self.add_credit(text)
         
-        #Return axis if specified, otherwise display figure
+        #Return axis will also display figure if True
         if ax != None or return_ax == True:
-            return self.ax
-        else:
             plt.show()
             plt.close()
-
+            return self.ax
+        
 
